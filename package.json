@@ -9,8 +9,8 @@
     "preview": "vite preview",
     "test": "vitest",
     "test:run": "vitest run",
-    "test:unit": "vitest run --exclude='src/**/*.integration.test.{js,jsx}'",
-    "test:integration": "vitest run --include='src/**/*.integration.test.{js,jsx}'",
+    "test:unit": "vitest run --config vitest.unit.config.js",
+    "test:integration": "vitest run integration",
     "test:ui": "vitest --ui"
   },
   "dependencies": {
