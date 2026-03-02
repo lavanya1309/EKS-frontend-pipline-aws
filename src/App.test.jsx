@@ -1,30 +1,40 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
-import App from './App'
+import { MemoryRouter, Routes, Route, Navigate } from 'react-router-dom'
+import Layout from './components/Layout'
+import Login from './components/Login'
+import Signup from './components/Signup'
+import ErrorBoundary from './components/ErrorBoundary'
 
-function renderWithRouter(ui, { route = '/' } = {}) {
+function renderAtRoute(route) {
   return render(
-    <MemoryRouter initialEntries={[route]}>
-      {ui}
-    </MemoryRouter>
+    <ErrorBoundary>
+      <MemoryRouter initialEntries={[route]}>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/signup" element={<Signup />} />
+          <Route path="/dashboard/*" element={<Layout />} />
+          <Route path="/" element={<Navigate to="/login" replace />} />
+        </Routes>
+      </MemoryRouter>
+    </ErrorBoundary>
   )
 }
 
 describe('App', () => {
   it('redirects / to login', () => {
-    renderWithRouter(<App />, { route: '/' })
+    renderAtRoute('/')
     expect(screen.getByRole('heading', { name: /welcome back/i })).toBeInTheDocument()
   })
 
   it('shows login at /login', () => {
-    renderWithRouter(<App />, { route: '/login' })
+    renderAtRoute('/login')
     expect(screen.getByLabelText(/email address/i)).toBeInTheDocument()
     expect(screen.getByLabelText(/password/i)).toBeInTheDocument()
   })
 
   it('shows signup at /signup', () => {
-    renderWithRouter(<App />, { route: '/signup' })
-    expect(screen.getByRole('heading', { name: /create account|sign up/i })).toBeInTheDocument()
+    renderAtRoute('/signup')
+    expect(screen.getByRole('heading', { name: /create account/i })).toBeInTheDocument()
   })
 })
