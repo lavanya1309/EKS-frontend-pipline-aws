@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import Login from './Login'
@@ -33,21 +33,21 @@ describe('Login', () => {
   })
 
   it('shows error for invalid email', async () => {
-    const user = userEvent.setup()
     render(<MemoryRouter><Login /></MemoryRouter>)
-    await user.type(screen.getByPlaceholderText(/enter your email/i), 'bad')
-    await user.type(screen.getByPlaceholderText(/enter your password/i), 'password1')
-    await user.click(screen.getByRole('button', { name: /sign in/i }))
+    const emailInput = screen.getByPlaceholderText(/enter your email/i)
+    const passwordInput = screen.getByPlaceholderText(/enter your password/i)
+    fireEvent.change(emailInput, { target: { name: 'email', value: 'bad' } })
+    fireEvent.change(passwordInput, { target: { name: 'password', value: 'password1' } })
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }))
     expect(await screen.findByText(/email is invalid/i)).toBeInTheDocument()
     expect(api.login).not.toHaveBeenCalled()
   })
 
   it('shows error for short password', async () => {
-    const user = userEvent.setup()
     render(<MemoryRouter><Login /></MemoryRouter>)
-    await user.type(screen.getByPlaceholderText(/enter your email/i), 'a@b.com')
-    await user.type(screen.getByPlaceholderText(/enter your password/i), '12345')
-    await user.click(screen.getByRole('button', { name: /sign in/i }))
+    fireEvent.change(screen.getByPlaceholderText(/enter your email/i), { target: { name: 'email', value: 'a@b.com' } })
+    fireEvent.change(screen.getByPlaceholderText(/enter your password/i), { target: { name: 'password', value: '12345' } })
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }))
     expect(await screen.findByText(/at least 6 characters/i)).toBeInTheDocument()
     expect(api.login).not.toHaveBeenCalled()
   })
