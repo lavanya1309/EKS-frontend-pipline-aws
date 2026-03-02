@@ -1,0 +1,84 @@
+name: Test, Build and Push to ECR
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: frontend-data-validation-tracker
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  test-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit tests
+        run: npm run test:unit
+
+      - name: Run integration tests
+        run: npm run test:integration
+
+      - name: Configure AWS (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Bump version from commits (Conventional Commits)
+        id: version
+        run: |
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -z "$LATEST_TAG" ]; then
+            BASE_VERSION="0.0.0"
+            COMMITS=$(git log --oneline)
+          else
+            BASE_VERSION=${LATEST_TAG#v}
+            COMMITS=$(git log ${LATEST_TAG}..HEAD --oneline 2>/dev/null || echo "")
+          fi
+          BUMP="patch"
+          echo "$COMMITS" | grep -qE "^(feat|fix)(\(.+\))?!|BREAKING CHANGE" && BUMP="major"
+          [ "$BUMP" = "patch" ] && echo "$COMMITS" | grep -qE "^feat" && BUMP="minor"
+          [ "$BUMP" = "patch" ] && echo "$COMMITS" | grep -qE "^fix" && BUMP="patch"
+          IFS='.' read -r MAJ MIN PAT <<< "$BASE_VERSION"
+          MAJ=${MAJ:-0}; MIN=${MIN:-0}; PAT=${PAT:-0}
+          case $BUMP in
+            major) MAJ=$((MAJ+1)); MIN=0; PAT=0 ;;
+            minor) MIN=$((MIN+1)); PAT=0 ;;
+            patch) PAT=$((PAT+1)) ;;
+          esac
+          NEW_VERSION="${MAJ}.${MIN}.${PAT}"
+          echo "VERSION_TAG=v${NEW_VERSION}" >> $GITHUB_OUTPUT
+          echo "Version: v${NEW_VERSION} (bump: $BUMP, base: $BASE_VERSION)"
+
+      - name: Build and push image
+        env:
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          VERSION_TAG: ${{ steps.version.outputs.VERSION_TAG }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$VERSION_TAG -t $ECR_REGISTRY/$ECR_REPOSITORY:latest -t $ECR_REGISTRY/$ECR_REPOSITORY:${{ github.sha }} .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$VERSION_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:${{ github.sha }}

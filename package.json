@@ -1,7 +1,7 @@
 {
   "name": "frontend",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,6 +9,8 @@
     "preview": "vite preview",
     "test": "vitest",
     "test:run": "vitest run",
+    "test:unit": "vitest run --exclude='src/**/*.integration.test.{js,jsx}'",
+    "test:integration": "vitest run --include='src/**/*.integration.test.{js,jsx}'",
     "test:ui": "vitest --ui"
   },
   "dependencies": {
