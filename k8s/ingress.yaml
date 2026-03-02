@@ -10,10 +10,14 @@ metadata:
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/target-type: ip
     alb.ingress.kubernetes.io/healthcheck-path: /
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: '443'
+    alb.ingress.kubernetes.io/certificate-arn: REPLACE_WITH_ACM_CERT_ARN
 spec:
   ingressClassName: alb
   rules:
-    - http:
+    - host: REPLACE_WITH_YOUR_DOMAIN
+      http:
         paths:
           - path: /
             pathType: Prefix
@@ -22,8 +26,3 @@ spec:
                 name: frontend
                 port:
                   number: 80
-  # TLS example - uncomment and set your host/cert when ready
-  # tls:
-  #   - hosts:
-  #       - your-domain.com
-  #     secretName: frontend-tls

@@ -23,6 +23,8 @@ spec:
         app: frontend
         app.kubernetes.io/name: frontend
     spec:
+      nodeSelector:
+        workload: frontend
       securityContext:
         runAsNonRoot: true
         runAsUser: 101
