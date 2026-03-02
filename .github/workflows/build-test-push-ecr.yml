@@ -138,4 +138,10 @@ jobs:
           kubectl apply -f k8s/hpa.yaml --validate=false
           kubectl apply -f k8s/pdb.yaml --validate=false
           if [ "$APPLY_INGRESS" = "1" ]; then kubectl apply -f k8s/ingress.yaml --validate=false; fi
-          kubectl rollout status deployment/frontend -n frontend --timeout=120s
+          kubectl rollout status deployment/frontend -n frontend --timeout=300s
+
+      - name: Debug pods (on failure)
+        if: failure()
+        run: |
+          kubectl get pods -n frontend -o wide
+          kubectl describe pods -n frontend
