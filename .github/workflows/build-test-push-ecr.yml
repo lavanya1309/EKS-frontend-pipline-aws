@@ -14,8 +14,11 @@ permissions:
   contents: read
 
 jobs:
-  test-and-push:
+  build-push:
     runs-on: ubuntu-latest
+    outputs:
+      version_tag: ${{ steps.version.outputs.VERSION_TAG }}
+      ecr_registry: ${{ steps.ecr-login.outputs.registry }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -87,3 +90,52 @@ jobs:
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$VERSION_TAG
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:${{ github.sha }}
+
+  deploy:
+    needs: [build-push]
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Install kubectl
+        run: |
+          curl -sLO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          chmod +x kubectl && sudo mv kubectl /usr/local/bin/
+
+      - name: Configure kubeconfig for EKS
+        run: |
+          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ vars.EKS_CLUSTER_NAME }}
+
+      - name: Deploy to EKS
+        env:
+          IMAGE: ${{ needs.build-push.outputs.ecr_registry }}/${{ env.ECR_REPOSITORY }}:${{ needs.build-push.outputs.version_tag }}
+          ACM_CERT_ARN: ${{ vars.ACM_CERT_ARN }}
+          INGRESS_HOST: ${{ vars.INGRESS_HOST }}
+        run: |
+          sed -i "s|PLACEHOLDER_ECR_IMAGE|${IMAGE}|g" k8s/deployment.yaml
+          if [ -n "$ACM_CERT_ARN" ] && [ -n "$INGRESS_HOST" ]; then
+            sed -i "s|REPLACE_WITH_ACM_CERT_ARN|${ACM_CERT_ARN}|g" k8s/ingress.yaml
+            sed -i "s|REPLACE_WITH_YOUR_DOMAIN|${INGRESS_HOST}|g" k8s/ingress.yaml
+            APPLY_INGRESS=1
+          else
+            APPLY_INGRESS=0
+          fi
+          kubectl apply -f k8s/namespace.yaml --validate=false
+          kubectl apply -f k8s/deployment.yaml --validate=false
+          kubectl apply -f k8s/service.yaml --validate=false
+          kubectl apply -f k8s/hpa.yaml --validate=false
+          kubectl apply -f k8s/pdb.yaml --validate=false
+          if [ "$APPLY_INGRESS" = "1" ]; then kubectl apply -f k8s/ingress.yaml --validate=false; fi
+          kubectl rollout status deployment/frontend -n frontend --timeout=120s
