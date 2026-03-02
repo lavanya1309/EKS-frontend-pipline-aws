@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import Login from './Login'
@@ -36,18 +36,23 @@ describe('Login', () => {
     render(<MemoryRouter><Login /></MemoryRouter>)
     const emailInput = screen.getByPlaceholderText(/enter your email/i)
     const passwordInput = screen.getByPlaceholderText(/enter your password/i)
+    const form = emailInput.closest('form')
     fireEvent.change(emailInput, { target: { name: 'email', value: 'bad' } })
     fireEvent.change(passwordInput, { target: { name: 'password', value: 'password1' } })
-    fireEvent.click(screen.getByRole('button', { name: /sign in/i }))
+    await act(async () => {})
+    fireEvent.submit(form)
     expect(await screen.findByText(/email is invalid/i)).toBeInTheDocument()
     expect(api.login).not.toHaveBeenCalled()
   })
 
   it('shows error for short password', async () => {
     render(<MemoryRouter><Login /></MemoryRouter>)
-    fireEvent.change(screen.getByPlaceholderText(/enter your email/i), { target: { name: 'email', value: 'a@b.com' } })
+    const emailInput = screen.getByPlaceholderText(/enter your email/i)
+    const form = emailInput.closest('form')
+    fireEvent.change(emailInput, { target: { name: 'email', value: 'a@b.com' } })
     fireEvent.change(screen.getByPlaceholderText(/enter your password/i), { target: { name: 'password', value: '12345' } })
-    fireEvent.click(screen.getByRole('button', { name: /sign in/i }))
+    await act(async () => {})
+    fireEvent.submit(form)
     expect(await screen.findByText(/at least 6 characters/i)).toBeInTheDocument()
     expect(api.login).not.toHaveBeenCalled()
   })
