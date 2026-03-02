@@ -16,10 +16,10 @@ The pipeline sets the image tag (e.g. `v1.0.0`, `v1.1.0`, `v2.0.0`) using **Conv
 
 ## How it works
 
-1. Pipeline finds the **latest git tag** (e.g. `v1.0.0`). If none, starts from `0.0.0`.
-2. It looks at **commits since that tag**.
+1. **No git tag** → first release is **v1.0.0**.
+2. Pipeline finds the **latest git tag** (e.g. `v1.0.0`). It looks at **commits since that tag**.
 3. It picks the **highest** bump in those commits (major > minor > patch).
-4. It builds the **new version** and tags the image as `v1.1.0` (etc.) and pushes to ECR.
+4. **fix:** = patch (e.g. v1.1.0 → **v1.1.1**). **feat:** = minor (e.g. v1.0.0 → **v1.1.0**). **feat!:** / BREAKING = major (e.g. v1.1.0 → **v2.0.0**).
 
 ## Creating a release tag (optional)
 
@@ -34,6 +34,8 @@ Next push will use commits after `v1.0.0` to compute the next version (e.g. `v1.
 
 ## Examples
 
-- Only `fix:` commits since last tag → **v1.0.1** (patch).
-- One `feat:` and one `fix:` → **v1.1.0** (minor wins).
-- One `feat!:` or `BREAKING CHANGE` → **v2.0.0** (major).
+- **First run (no tag)** → **v1.0.0**.
+- After `v1.0.0`, only `fix:` commits → **v1.0.1** (patch).
+- After `v1.0.0`, `feat:` or bug/feature → **v1.1.0** (minor).
+- After `v1.1.0`, `fix:` → **v1.1.1** (patch).
+- After `v1.1.0`, `feat!:` or `BREAKING CHANGE` → **v2.0.0** (major).
