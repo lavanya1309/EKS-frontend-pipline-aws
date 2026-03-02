@@ -44,7 +44,7 @@ Replace `YOUR_GITHUB_ORG` with your GitHub org or username (e.g. `mycompany` or 
 Create a custom policy, attach it to the role. Replace:
 
 - `250560143950` = your AWS account ID  
-- `us-east-1` = region where ECR and EKS live (change if different)  
+- `ap-south-1` = region where ECR repo lives (change if different)  
 - `frontend-data-validation-tracker` = ECR repository name  
 - `your-eks-cluster-name` = EKS cluster name  
 
@@ -59,6 +59,12 @@ Create a custom policy, attach it to the role. Replace:
       "Resource": "*"
     },
     {
+      "Sid": "ECRCreate",
+      "Effect": "Allow",
+      "Action": "ecr:CreateRepository",
+      "Resource": "arn:aws:ecr:ap-south-1:250560143950:repository/frontend-data-validation-tracker"
+    },
+    {
       "Sid": "ECRPush",
       "Effect": "Allow",
       "Action": [
@@ -70,7 +76,7 @@ Create a custom policy, attach it to the role. Replace:
         "ecr:UploadLayerPart",
         "ecr:CompleteLayerUpload"
       ],
-      "Resource": "arn:aws:ecr:us-east-1:250560143950:repository/frontend-data-validation-tracker"
+      "Resource": "arn:aws:ecr:ap-south-1:250560143950:repository/frontend-data-validation-tracker"
     },
     {
       "Sid": "EKSDescribe",

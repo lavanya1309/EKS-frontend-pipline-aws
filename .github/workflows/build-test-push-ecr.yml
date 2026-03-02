@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 env:
-  AWS_REGION: us-east-1
+  AWS_REGION: ap-south-1
   ECR_REPOSITORY: frontend-data-validation-tracker
 
 permissions:
@@ -46,6 +46,11 @@ jobs:
       - name: Login to ECR
         id: ecr-login
         uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Create ECR repository if missing
+        run: |
+          aws ecr describe-repositories --repository-names ${{ env.ECR_REPOSITORY }} 2>/dev/null || \
+          aws ecr create-repository --repository-name ${{ env.ECR_REPOSITORY }}
 
       - name: Bump version from commits (Conventional Commits)
         id: version
