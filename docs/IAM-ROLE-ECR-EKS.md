@@ -1,6 +1,7 @@
 # IAM role permissions for ECR + EKS (GitHub OIDC)
 
-Use one IAM role for the pipeline with permissions for both ECR (push image) and EKS (get cluster access for deploy).
+Use one IAM role for the pipeline with permissions for both ECR (push image) and EKS (get cluster access for deploy).  
+**If deploy fails with "the server has asked for the client to provide credentials"** → grant the OIDC role access to the cluster using either **EKS Access Entries** (Section 3a, no aws-auth) or the **aws-auth** ConfigMap (Section 3b).
 
 ---
 
@@ -86,8 +87,8 @@ Create a custom policy, attach it to the role. Replace:
         "eks:ListClusters"
       ],
       "Resource": [
-        "arn:aws:eks:us-east-1:250560143950:cluster/your-eks-cluster-name",
-        "arn:aws:eks:us-east-1:250560143950:cluster/*"
+        "arn:aws:eks:ap-south-1:250560143950:cluster/YOUR_EKS_CLUSTER_NAME",
+        "arn:aws:eks:ap-south-1:250560143950:cluster/*"
       ]
     }
   ]
@@ -99,34 +100,73 @@ Create a custom policy, attach it to the role. Replace:
 
 ---
 
-## 3. EKS cluster: allow the role to use kubectl (aws-auth)
+## 3a. EKS Access Entries (alternative — no aws-auth)
 
-The IAM role must be mapped in the EKS cluster so it can create/update resources (e.g. Deployment).
+Use this if your cluster supports Access Entries (EKS 1.23+) and you prefer not to create or edit the aws-auth ConfigMap. Run these from your laptop (or any client) with an IAM user/role that can manage the cluster (e.g. cluster creator or an admin with `eks:UpdateClusterConfig`, `eks:CreateAccessEntry`, `eks:AssociateAccessPolicy`).
 
-**Get current aws-auth:**
+**1. Enable Access Entries on the cluster** (one-time; use your cluster name and region):
 
 ```bash
-kubectl get configmap aws-auth -n kube-system -o yaml
+aws eks update-cluster-config --name eks-cluster --access-config authenticationMode=API_AND_CONFIG_MAP --region ap-south-1
 ```
 
-**Add this under `mapRoles`** (merge with existing entries; do not remove existing roles):
+Wait until the cluster status is Active again (EKS console or `aws eks describe-cluster --name eks-cluster --region ap-south-1 --query 'cluster.status'`).
+
+**2. Create an access entry for the GitHub OIDC role** (replace the role ARN with your `vars.AWS_ROLE_ARN`):
+
+```bash
+aws eks create-access-entry \
+  --cluster-name eks-cluster \
+  --principal-arn arn:aws:iam::250560143950:role/YOUR_GITHUB_OIDC_ROLE_NAME \
+  --type STANDARD \
+  --region ap-south-1
+```
+
+**3. Give that role cluster-admin so the pipeline can deploy:**
+
+```bash
+aws eks associate-access-policy \
+  --cluster-name eks-cluster \
+  --principal-arn arn:aws:iam::250560143950:role/YOUR_GITHUB_OIDC_ROLE_NAME \
+  --policy-arn arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy \
+  --access-scope type=cluster \
+  --region ap-south-1
+```
+
+After this, the pipeline (using that OIDC role) can run `kubectl` against the cluster. No aws-auth needed. Your existing node group continues to work (EKS manages node role access when using managed node groups).
+
+---
+
+## 3b. EKS cluster: allow the OIDC role via aws-auth (required if not using Access Entries)
+
+Without this, you get: **"the server has asked for the client to provide credentials"**.  
+EKS uses **aws-auth** to map IAM roles to Kubernetes users; the GitHub OIDC role must be listed there.
+
+**Step A – Get the role ARN**  
+Same as `vars.AWS_ROLE_ARN` in GitHub, e.g. `arn:aws:iam::250560143950:role/github-oidc-ecr-eks`.
+
+**Step B – Edit aws-auth** (from a machine that already has kubectl access to the cluster, e.g. your laptop with `aws eks update-kubeconfig`):
+
+```bash
+kubectl get configmap aws-auth -n kube-system -o yaml > aws-auth.yaml
+```
+
+Open `aws-auth.yaml`. Find **`data.mapRoles`** (a multi-line string). Add this **new entry** to the list (keep all existing entries):
 
 ```yaml
-mapRoles:
-  # existing entries...
-  - rolearn: arn:aws:iam::250560143950:role/YOUR_GITHUB_OIDC_ROLE_NAME
-    username: github-actions
-    groups:
-      - system:masters
+    - rolearn: arn:aws:iam::250560143950:role/YOUR_GITHUB_OIDC_ROLE_NAME
+      username: github-actions
+      groups:
+        - system:masters
 ```
 
-- Replace `YOUR_GITHUB_OIDC_ROLE_NAME` with the name of the IAM role you created for GitHub OIDC.  
-- `system:masters` = full admin. For less power, use a dedicated group and RBAC (see below).
+- Replace `YOUR_GITHUB_OIDC_ROLE_NAME` with the IAM role name you use for GitHub OIDC (same role as `vars.AWS_ROLE_ARN`, e.g. `github-oidc-ecr-eks`).  
+- Use your account ID if different from `250560143950`.
 
-**Apply:**
+**Step C – Apply:**
 
 ```bash
-kubectl apply -f aws-auth-edited.yaml
+kubectl apply -f aws-auth.yaml
 ```
 
 **Optional – restrict to one namespace:**  
@@ -141,7 +181,7 @@ Use a dedicated group instead of `system:masters`, then create a RoleBinding in 
 | Who can assume role  | IAM role trust policy         | OIDC provider + optional `sub` condition |
 | ECR push             | IAM role permissions policy   | `ecr:GetAuthorizationToken` + ECR repo actions |
 | EKS kubeconfig       | IAM role permissions policy   | `eks:DescribeCluster` (and optionally `ListClusters`) |
-| EKS kubectl/deploy   | EKS cluster `aws-auth` ConfigMap | Map role ARN to a user/group with RBAC (e.g. `system:masters` or namespace-scoped role) |
+| EKS kubectl/deploy   | EKS Access Entries (3a) or `aws-auth` ConfigMap (3b) | Add OIDC role via Access Entries (no ConfigMap) or add role to aws-auth |
 
 **GitHub variable:**  
 `AWS_ROLE_ARN` = full ARN of this role, e.g. `arn:aws:iam::250560143950:role/github-oidc-ecr-eks`
